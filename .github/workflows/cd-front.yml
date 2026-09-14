@@ -36,12 +36,7 @@ jobs:
           REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
         run: npm run build
 
-      - name: debug list buckets
-        run: |
-          oci os bucket list \
-            --namespace-name "${{ vars.OCI_NAMESPACE }}" \
-            --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
-            --region "${{ vars.OCI_REGION }}"
+      
       - name: install oci-cli
         run: pip install --quiet oci-cli
 
@@ -59,6 +54,12 @@ jobs:
           echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/key.pem
           chmod 600 ~/.oci/key.pem ~/.oci/config
  
+      - name: debug list buckets
+        run: |
+          oci os bucket list \
+            --namespace-name "${{ vars.OCI_NAMESPACE }}" \
+            --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+            --region "${{ vars.OCI_REGION }}"
       - name: check oci identity
         run: oci os ns get
 
