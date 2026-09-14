@@ -1,8 +1,6 @@
 # git action workflow name
-name: cd-front
-# executing name, can use environment variables
+name: front/CD
 run-name: "CD actor : ${{github.actor}}"
-# Controls when the workflow will run
 on:
   workflow_dispatch:
   push:
@@ -12,27 +10,8 @@ on:
       - '.github/workflows/*'
 
 jobs:
-  filter:
-    runs-on: ubuntu-latest
-    outputs: 
-      front_change: ${{steps.filter_front.outputs.front || 'false'}}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v4
-        name: check if front directory exits
-        id: filter_front
-        if: hashFiles('front/**') !=  ''
-        with:
-          filters: |
-            front:
-              -  'front/**'
-              -  '.github/workflows/*'
-
   front:
-    needs: filter
-    if: needs.filter.outputs.front_change == 'true'
     permissions: 
-      id-token: write
       contents: read
       
     runs-on: ubuntu-latest
@@ -53,17 +32,67 @@ jobs:
             npm test -- --watchAll=false --passWithNoTests
       - name: npm build
         env:
-          CI: false
+          CI: true
           REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
         run: npm run build
 
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{secrets.ARN_ROLE}}
-          aws-region: ${{ vars.AWS_REGION }}
+      - name: install oci-cli
+        run: pip install --quiet oci-cli
 
-      - name: check aws identity
-        run: aws sts get-caller-identity
-      - name: Upload to S3 TEST BUCKET
-        run: aws s3 sync build/ s3://${{ secrets.AWS_BUCKET_TEST }} --delete --exclude "backend-deploy/*"
-        
+      - name: configure oci cli
+        run: |
+          mkdir -p ~/.oci
+          cat > ~/.oci/config <<EOF
+          [DEFAULT]
+          user=${{ secrets.OCI_USER_OCID }}
+          fingerprint=${{ secrets.OCI_FINGERPRINT }}
+          tenancy=${{ secrets.OCI_TENANCY_OCID }}
+          region=${{ vars.OCI_REGION }}
+          key_file=~/.oci/key.pem
+          EOF
+          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/key.pem
+          chmod 600 ~/.oci/key.pem ~/.oci/config
+ 
+      - name: check oci identity
+        run: oci os ns get
+
+      - name: Upload to Object Storage TEST BUCKET (per-file Content-Type)
+        run: |
+          chmod +x ../deploy/upload-frontend.sh
+          ../deploy/upload-frontend.sh build "${{ secrets.OCI_BUCKET_NAME }}" "${{ vars.OCI_NAMESPACE }}"
+ 
+      - name: Prune stale objects (equivalent to aws s3 sync --delete)
+        run: |
+          NAMESPACE="${{ vars.OCI_NAMESPACE }}"
+          BUCKET="${{ secrets.OCI_BUCKET_NAME }}"
+          EXCLUDE_PREFIX="backend-deploy/"
+          
+          # 현재 working-directory가 front이므로 빌드 결과물은 ./build 안에 있음
+          # 경로 앞의 './build/'를 깔끔하게 제거하여 원격 버킷 이름과 포맷 맞추기
+          find build -type f | sed "s|^build/||" | sort > /tmp/local-files.txt
+          
+          # 원격 버킷 오브젝트 목록
+          oci os object list \
+            --bucket-name "$BUCKET" \
+            --namespace-name "$NAMESPACE" \
+            --all --query 'data[].name' \
+          | jq -r '.[]' | sort > /tmp/remote-files.txt
+          
+          # 원격에는 있지만 로컬 빌드에는 없는 것만 추출
+          comm -23 /tmp/remote-files.txt /tmp/local-files.txt \
+            | grep -v "^${EXCLUDE_PREFIX}" \
+            > /tmp/to-delete.txt || true
+          
+          if [ -s /tmp/to-delete.txt ]; then
+            echo "삭제 대상:"
+            cat /tmp/to-delete.txt
+            while read -r name; do
+              oci os object delete \
+                --bucket-name "$BUCKET" \
+                --namespace-name "$NAMESPACE" \
+                --name "$name" \
+                --force
+            done < /tmp/to-delete.txt
+          else
+            echo "삭제할 오브젝트 없음"
+          fi
