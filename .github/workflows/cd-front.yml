@@ -58,9 +58,8 @@ jobs:
 
       - name: Upload to Object Storage TEST BUCKET (per-file Content-Type)
         run: |
-          chmod +x ../deploy/upload-frontend.sh
-          ../deploy/upload-frontend.sh build "${{ secrets.OCI_BUCKET_NAME }}" "${{ vars.OCI_NAMESPACE }}"
- 
+          chmod +x ${{ github.workspace }}/deploy/upload-frontend.sh
+          ${{ github.workspace }}/deploy/upload-frontend.sh build "${{ secrets.OCI_BUCKET_NAME }}" "${{ vars.OCI_NAMESPACE }}"
       - name: Prune stale objects (equivalent to aws s3 sync --delete)
         run: |
           NAMESPACE="${{ vars.OCI_NAMESPACE }}"
