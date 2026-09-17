@@ -54,12 +54,22 @@ jobs:
           echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/key.pem
           chmod 600 ~/.oci/key.pem ~/.oci/config
  
-      - name: debug list buckets
+      - name: debug namespace compare
         run: |
-          oci os bucket list \
-            --namespace-name "${{ vars.OCI_NAMESPACE }}" \
-            --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
-            --region "${{ vars.OCI_REGION }}"
+          echo "=== config에 설정된 값 ==="
+          echo "vars.OCI_NAMESPACE = [${{ vars.OCI_NAMESPACE }}]"
+          echo "vars.OCI_REGION    = [${{ vars.OCI_REGION }}]"
+
+          echo "=== 실제 인증된 테넌시의 네임스페이스 ==="
+          REAL_NS=$(oci os ns get --raw-output --query 'data')
+          echo "real namespace     = [$REAL_NS]"
+
+          echo "=== 비교 결과 ==="
+          if [ "$REAL_NS" = "${{ vars.OCI_NAMESPACE }}" ]; then
+            echo "일치함"
+          else
+            echo "불일치! 이것이 원인입니다."
+          fi
       - name: check oci identity
         run: oci os ns get
 
