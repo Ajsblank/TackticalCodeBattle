@@ -64,23 +64,11 @@
         #     --namespace-name "${{ vars.OCI_NAMESPACE }}" \
         #     --all \
         #     --output table  
-        - name: check oci user
-          run: |
-            oci iam user get \
-              --user-id "${{ secrets.OCI_USER_OCID }}" \
-              --query 'data.{name:name,id:id}' \
-              --output table
-        - name: check oci user
-          run: |
-            oci iam user get \
-              --user-id "${{ secrets.OCI_USER_OCID }}" \
-              --query 'data.{name:name,id:id}' \
-              --output table
         - name: check target bucket
           run: |
             oci os bucket get \
-              --namespace-name "$(oci os ns get --query 'data' --raw-output)" \
-              --bucket-name "${{ secrets.OCI_BUCKET_NAME }}"
+            --namespace-name "ax01n8htnotu" \
+            --bucket-name "oci-tcb-bucket-staging"
         - name: Upload to OCI Object Storage (Clear & Bulk Upload)
           run: |
             BUCKET="${{ secrets.OCI_BUCKET_NAME }}"
