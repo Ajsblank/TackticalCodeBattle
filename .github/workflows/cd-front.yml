@@ -1,100 +1,91 @@
-# git action workflow name
-name: front/CD
-run-name: "CD actor : ${{github.actor}}"
-on:
-  workflow_dispatch:
-  push:
-    branches: [ "dev/front"]
-    paths:
-      - 'front/**'
-      - '.github/workflows/*'
+  # git action workflow name
+  name: front/CD
+  run-name: "CD actor : ${{github.actor}}"
+  on:
+    workflow_dispatch:
+    push:
+      branches: [ "dev/front"]
+      paths:
+        - 'front/**'
+        - '.github/workflows/*'
 
-jobs:
-  front:
-    permissions: 
-      contents: read
+  jobs:
+    front:
+      permissions: 
+        contents: read
+        
+      runs-on: ubuntu-latest
+      defaults:
+        run:
+          working-directory: front
+      steps:
+        - uses: actions/checkout@v4
+        - uses: actions/setup-node@v4
+          name: node install
+          with:
+            node-version: 24
+        - name: install npm
+          run: npm ci
+
+        - name: npm test
+          run: |
+              npm test -- --watchAll=false --passWithNoTests
+        - name: npm build
+          env:
+            CI: true
+            REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
+          run: npm run build
+
+        
+        - name: install oci-cli
+          run: pip install --quiet oci-cli
+
+        - name: configure oci cli
+          run: |
+            mkdir -p ~/.oci
+            cat > ~/.oci/config <<EOF
+            [DEFAULT]
+            user=${{ secrets.OCI_USER_OCID }}
+            fingerprint=${{ secrets.OCI_FINGERPRINT }}
+            tenancy=${{ secrets.OCI_TENANCY_OCID }}
+            region=${{ vars.OCI_REGION }}
+            key_file=~/.oci/key.pem
+            EOF
+            echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/key.pem
+            chmod 600 ~/.oci/key.pem ~/.oci/config
+  
+        - name: check oci identity
+          run: oci os ns get
+
+        - name: list oci buckets
+          run: |
+            oci os bucket list \
+            --compartment-id "${{ secrets.OCI_BUCKET_COMPARTMENT_OCID }}" \
+            --namespace-name "${{ vars.OCI_NAMESPACE }}" \
+            --all \
+            --output table  
+        - name: Upload to OCI Object Storage (Clear & Bulk Upload)
+          run: |
+            BUCKET="${{ secrets.OCI_BUCKET_NAME }}"
+            NAMESPACE="${{ vars.OCI_NAMESPACE }}"
       
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: front
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        name: node install
-        with:
-          node-version: 24
-      - name: install npm
-        run: npm ci
+            echo "1. 기존 버킷 내 객체 전체 삭제 중..."
+            # 버킷 내의 모든 오브젝트 목록을 조회하여 일괄 삭제 (파일이 없는 경우 에러 방지용 || true 처리)
+            EXISTING_FILES=$(oci os object list --namespace-name "$NAMESPACE" --bucket-name "$BUCKET" --all --query 'data[].name' --raw-output 2>/dev/null || echo "")
+            
+            if [ -n "$EXISTING_FILES" ] && [ "$EXISTING_FILES" != "[]" ]; then
+              for file in $(echo "$EXISTING_FILES" | jq -r '.[]'); do
+                oci os object delete --namespace-name "$NAMESPACE" --bucket-name "$BUCKET" --name "$file" --force >/dev/null 2>&1 || true
+              done
+              echo "기존 파일 삭제 완료."
+            else
+              echo "삭제할 기존 파일이 없습니다."
+            fi
 
-      - name: npm test
-        run: |
-            npm test -- --watchAll=false --passWithNoTests
-      - name: npm build
-        env:
-          CI: true
-          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
-        run: npm run build
-
-      
-      - name: install oci-cli
-        run: pip install --quiet oci-cli
-
-      - name: configure oci cli
-        run: |
-          mkdir -p ~/.oci
-          cat > ~/.oci/config <<EOF
-          [DEFAULT]
-          user=${{ secrets.OCI_USER_OCID }}
-          fingerprint=${{ secrets.OCI_FINGERPRINT }}
-          tenancy=${{ secrets.OCI_TENANCY_OCID }}
-          region=${{ vars.OCI_REGION }}
-          key_file=~/.oci/key.pem
-          EOF
-          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/key.pem
-          chmod 600 ~/.oci/key.pem ~/.oci/config
- 
-      - name: debug namespace compare
-        run: |
-          echo "=== config에 설정된 값 ==="
-          echo "vars.OCI_NAMESPACE = [${{ vars.OCI_NAMESPACE }}]"
-          echo "vars.OCI_REGION    = [${{ vars.OCI_REGION }}]"
-
-          echo "=== 실제 인증된 테넌시의 네임스페이스 ==="
-          REAL_NS=$(oci os ns get --raw-output --query 'data')
-          echo "real namespace     = [$REAL_NS]"
-
-          echo "=== 비교 결과 ==="
-          if [ "$REAL_NS" = "${{ vars.OCI_NAMESPACE }}" ]; then
-            echo "일치함"
-          else
-            echo "불일치! 이것이 원인입니다."
-          fi
-      - name: check oci identity
-        run: oci os ns get
-
-      - name: Upload to OCI Object Storage (Clear & Bulk Upload)
-        run: |
-          BUCKET="${{ secrets.OCI_BUCKET_NAME }}"
-          NAMESPACE="${{ vars.OCI_NAMESPACE }}"
-    
-          echo "1. 기존 버킷 내 객체 전체 삭제 중..."
-          # 버킷 내의 모든 오브젝트 목록을 조회하여 일괄 삭제 (파일이 없는 경우 에러 방지용 || true 처리)
-          EXISTING_FILES=$(oci os object list --namespace-name "$NAMESPACE" --bucket-name "$BUCKET" --all --query 'data[].name' --raw-output 2>/dev/null || echo "")
-          
-          if [ -n "$EXISTING_FILES" ] && [ "$EXISTING_FILES" != "[]" ]; then
-            for file in $(echo "$EXISTING_FILES" | jq -r '.[]'); do
-              oci os object delete --namespace-name "$NAMESPACE" --bucket-name "$BUCKET" --name "$file" --force >/dev/null 2>&1 || true
-            done
-            echo "기존 파일 삭제 완료."
-          else
-            echo "삭제할 기존 파일이 없습니다."
-          fi
-
-          echo "2. 새로운 빌드 파일 업로드 중..."
-          # front 디렉토리 내의 build 폴더 안의 내용물을 버킷 루트에 일괄 업로드
-          oci os object bulk-upload \
-            --namespace-name "$NAMESPACE" \
-            --bucket-name "$BUCKET" \
-            --src-dir build \
-            --overwrite
+            echo "2. 새로운 빌드 파일 업로드 중..."
+            # front 디렉토리 내의 build 폴더 안의 내용물을 버킷 루트에 일괄 업로드
+            oci os object bulk-upload \
+              --namespace-name "$NAMESPACE" \
+              --bucket-name "$BUCKET" \
+              --src-dir build \
+              --overwrite
