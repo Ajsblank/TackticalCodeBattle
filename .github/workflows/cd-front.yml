@@ -57,13 +57,22 @@
         - name: check oci identity
           run: oci os ns get
 
-        - name: list oci buckets
+        # - name: list oci buckets
+        #   run: |
+        #     oci os bucket list \
+        #     --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
+        #     --namespace-name "${{ vars.OCI_NAMESPACE }}" \
+        #     --all \
+        #     --output table  
+        - name: check oci namespace
           run: |
-            oci os bucket list \
-            --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
-            --namespace-name "${{ vars.OCI_NAMESPACE }}" \
-            --all \
-            --output table  
+            echo "OCI namespace:"
+            oci os ns get
+        - name: check target bucket
+          run: |
+            oci os bucket get \
+              --namespace-name "$(oci os ns get --query 'data' --raw-output)" \
+              --bucket-name "${{ secrets.OCI_BUCKET_NAME }}"
         - name: Upload to OCI Object Storage (Clear & Bulk Upload)
           run: |
             BUCKET="${{ secrets.OCI_BUCKET_NAME }}"
