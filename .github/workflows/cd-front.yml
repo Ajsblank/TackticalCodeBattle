@@ -64,14 +64,17 @@
         #     --namespace-name "${{ vars.OCI_NAMESPACE }}" \
         #     --all \
         #     --output table  
-        - name: list target compartment buckets
+        - name: check oci user
           run: |
-            NAMESPACE=$(oci os ns get --query 'data' --raw-output)
-
-            oci os bucket list \
-              --compartment-id "ocid1.compartment.oc1..aaaaaaaauhwiqabzn4o4slepzvrb4vjhayqxwr2jcsue2t2wgi7aexf62jna" \
-              --namespace-name "$NAMESPACE" \
-              --all \
+            oci iam user get \
+              --user-id "${{ secrets.OCI_USER_OCID }}" \
+              --query 'data.{name:name,id:id}' \
+              --output table
+        - name: check oci user
+          run: |
+            oci iam user get \
+              --user-id "${{ secrets.OCI_USER_OCID }}" \
+              --query 'data.{name:name,id:id}' \
               --output table
         - name: check target bucket
           run: |
