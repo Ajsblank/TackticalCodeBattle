@@ -64,10 +64,15 @@
         #     --namespace-name "${{ vars.OCI_NAMESPACE }}" \
         #     --all \
         #     --output table  
-        - name: check oci namespace
+        - name: list target compartment buckets
           run: |
-            echo "OCI namespace:"
-            oci os ns get
+            NAMESPACE=$(oci os ns get --query 'data' --raw-output)
+
+            oci os bucket list \
+              --compartment-id "ocid1.compartment.oc1..aaaaaaaauhwiqabzn4o4slepzvrb4vjhayqxwr2jcsue2t2wgi7aexf62jna" \
+              --namespace-name "$NAMESPACE" \
+              --all \
+              --output table
         - name: check target bucket
           run: |
             oci os bucket get \
