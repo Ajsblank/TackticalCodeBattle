@@ -60,7 +60,7 @@
         - name: list oci buckets
           run: |
             oci os bucket list \
-            --compartment-id "${{ secrets.OCI_BUCKET_COMPARTMENT_OCID }}" \
+            --compartment-id "${{ secrets.OCI_COMPARTMENT_OCID }}" \
             --namespace-name "${{ vars.OCI_NAMESPACE }}" \
             --all \
             --output table  
