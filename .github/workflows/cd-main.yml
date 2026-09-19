@@ -7,45 +7,7 @@ on:
   push:
     branches: ["main"]
   workflow_dispatch:
-jobs:
-  front:
-    permissions: 
-      id-token: write
-      contents: read
-      
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: front
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        name: node install
-        with:
-          node-version: 24
-      - name: install npm
-        run: npm ci
-
-      - name: npm test
-        run: |
-            npm test -- --watchAll=false --passWithNoTests
-      - name: npm build
-        env:
-          CI: false
-          REACT_APP_API_BASE_URL: ${{ vars.REACT_APP_API_BASE_URL }}
-        run: npm run build
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{secrets.ARN_ROLE}}
-          aws-region: ${{ vars.AWS_REGION }}
-
-      - name: check aws identity
-        run: aws sts get-caller-identity
-      - name: Upload to S3 BUCKET
-        if: github.ref == 'refs/heads/main' 
-        run: aws s3 sync build/ s3://${{ secrets.AWS_BUCKET }} --delete --exclude "backend-deploy/*"
-        
+jobs:   
   server:
     permissions: 
       id-token: write
